@@ -45,3 +45,31 @@ export interface EmergencySOSPayload {
   accuracyMeters: number;
   status: 'Received' | 'Unit En Route' | 'Resolved';
 }
+
+export interface MeshNode {
+  id: string;
+  name: string;
+  type: 'LORA Relay' | 'BLE Peer' | 'Sat Gateway' | 'Mobile Hotspot';
+  status: 'Active' | 'Degraded' | 'Offline';
+  batteryLevel: number;
+  rssi: number;
+  connectedPeers: number;
+  packetsRelayed: number;
+  lastPing: string;
+  coordinates: { lat: number; lng: number };
+}
+
+export interface ResponderSafety {
+  id: string;
+  name: string;
+  role: string;
+  unit: string;
+  status: 'Safe / On Task' | 'Check-in Warning' | 'SOS Alert' | 'Rest Period';
+  battery: number;
+  heartRateBpm: number;
+  lastCheckInSecAgo: number;
+  deadmanTimeoutSec: number;
+  hazardRisk: 'Nominal' | 'Moderate' | 'Severe Risk';
+  coordinates: { lat: number; lng: number };
+}
+

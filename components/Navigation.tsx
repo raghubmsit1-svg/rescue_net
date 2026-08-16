@@ -43,10 +43,11 @@ export const Navigation: React.FC<NavigationProps> = ({
   }, []);
 
   const navLinks = [
-    { label: 'Dashboard', href: '/', icon: 'dashboard' },
-    { label: 'Triage', href: '/triage', icon: 'biotech' },
-    { label: 'Field Ops', href: '/field-ops', icon: 'emergency_share' },
-    { label: 'Victim SOS', href: '/sos', icon: 'security' },
+    { label: 'Overview', href: '/', icon: 'dashboard' },
+    { label: 'Victim SOS', href: '/sos', icon: 'emergency' },
+    { label: 'Mesh Network', href: '/mesh', icon: 'hub' },
+    { label: 'Worker Safety', href: '/field-ops', icon: 'security' },
+    { label: 'AI Triage', href: '/triage', icon: 'biotech' },
   ];
 
   return (

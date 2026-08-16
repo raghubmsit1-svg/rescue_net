@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { Navigation } from '../../components/Navigation';
+import { MeshStatusBanner } from '../../components/MeshStatusBanner';
 import { NewIncidentModal } from '../../components/NewIncidentModal';
 import { SosAlertModal } from '../../components/SosAlertModal';
 import { INITIAL_AGENCY_MATCHES, INITIAL_DATA_FEED_LOGS } from '../../data/mockData';
@@ -43,6 +44,7 @@ export default function TriagePage() {
 
   return (
     <div className="bg-[#f5f0e8] text-[#1a1a1a] font-body min-h-screen flex flex-col">
+      <MeshStatusBanner />
       {/* Navigation */}
       <Navigation
         onOpenNewIncident={() => setIsNewIncidentOpen(true)}

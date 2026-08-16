@@ -3,6 +3,7 @@
 import React, { useState, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import { Navigation } from '../../components/Navigation';
+import { MeshStatusBanner } from '../../components/MeshStatusBanner';
 import { NewIncidentModal } from '../../components/NewIncidentModal';
 import { SosAlertModal } from '../../components/SosAlertModal';
 
@@ -65,6 +66,7 @@ export default function VictimSosPage() {
 
   return (
     <div className="bg-[#f5f0e8] text-[#1a1a1a] font-body min-h-screen flex flex-col">
+      <MeshStatusBanner />
       {/* Navigation */}
       <Navigation
         onOpenNewIncident={() => setIsNewIncidentOpen(true)}

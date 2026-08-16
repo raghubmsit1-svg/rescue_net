@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { Navigation } from '../components/Navigation';
+import { MeshStatusBanner } from '../components/MeshStatusBanner';
 import { InteractiveMap } from '../components/InteractiveMap';
 import { NewIncidentModal } from '../components/NewIncidentModal';
 import { SosAlertModal } from '../components/SosAlertModal';
@@ -50,6 +51,7 @@ export default function CommandCenterPage() {
 
   return (
     <div className="bg-[#f5f0e8] text-[#1a1a1a] font-body min-h-screen flex flex-col">
+      <MeshStatusBanner />
       {/* Navigation */}
       <Navigation
         onOpenNewIncident={() => setIsNewIncidentOpen(true)}

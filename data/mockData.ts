@@ -1,4 +1,4 @@
-import { Incident, AgencyMatch, DataFeedLog } from '../types/rescue';
+import { Incident, AgencyMatch, DataFeedLog, MeshNode, ResponderSafety } from '../types/rescue';
 
 export const INITIAL_INCIDENTS: Incident[] = [
   {
@@ -162,3 +162,122 @@ export const INITIAL_DATA_FEED_LOGS: DataFeedLog[] = [
     type: 'system'
   }
 ];
+
+export const INITIAL_MESH_NODES: MeshNode[] = [
+  {
+    id: 'NODE-ALAP-01',
+    name: 'Alappuzha High Ground Tower',
+    type: 'LORA Relay',
+    status: 'Active',
+    batteryLevel: 94,
+    rssi: -62,
+    connectedPeers: 18,
+    packetsRelayed: 1420,
+    lastPing: '2s ago',
+    coordinates: { lat: 9.4981, lng: 76.3388 }
+  },
+  {
+    id: 'NODE-WAYA-04',
+    name: 'Wayanad Ridge Relay B',
+    type: 'Sat Gateway',
+    status: 'Active',
+    batteryLevel: 88,
+    rssi: -71,
+    connectedPeers: 12,
+    packetsRelayed: 980,
+    lastPing: '5s ago',
+    coordinates: { lat: 11.6854, lng: 76.1320 }
+  },
+  {
+    id: 'NODE-IDUK-09',
+    name: 'Idukki Catchment Mesh Repeater',
+    type: 'LORA Relay',
+    status: 'Degraded',
+    batteryLevel: 42,
+    rssi: -94,
+    connectedPeers: 6,
+    packetsRelayed: 430,
+    lastPing: '18s ago',
+    coordinates: { lat: 9.8482, lng: 76.9744 }
+  },
+  {
+    id: 'NODE-MUNN-02',
+    name: 'Munnar Mobile Command Van',
+    type: 'Mobile Hotspot',
+    status: 'Active',
+    batteryLevel: 100,
+    rssi: -54,
+    connectedPeers: 24,
+    packetsRelayed: 3100,
+    lastPing: '1s ago',
+    coordinates: { lat: 10.0889, lng: 77.0595 }
+  },
+  {
+    id: 'NODE-KOTT-07',
+    name: 'Kottayam Sector 2 Peer Node',
+    type: 'BLE Peer',
+    status: 'Offline',
+    batteryLevel: 0,
+    rssi: -120,
+    connectedPeers: 0,
+    packetsRelayed: 120,
+    lastPing: '45m ago',
+    coordinates: { lat: 9.5916, lng: 76.5222 }
+  }
+];
+
+export const INITIAL_RESPONDER_SAFETY: ResponderSafety[] = [
+  {
+    id: 'RESP-401',
+    name: 'Capt. Rajesh Nair',
+    role: 'Team Lead / Boat Pilot',
+    unit: 'NDRF Unit 4',
+    status: 'Safe / On Task',
+    battery: 85,
+    heartRateBpm: 78,
+    lastCheckInSecAgo: 140,
+    deadmanTimeoutSec: 1800,
+    hazardRisk: 'Moderate',
+    coordinates: { lat: 9.4981, lng: 76.3388 }
+  },
+  {
+    id: 'RESP-402',
+    name: 'Dr. Ananya Varma',
+    role: 'Trauma Medic',
+    unit: 'EMS Swift Response',
+    status: 'Safe / On Task',
+    battery: 92,
+    heartRateBpm: 84,
+    lastCheckInSecAgo: 320,
+    deadmanTimeoutSec: 1800,
+    hazardRisk: 'Nominal',
+    coordinates: { lat: 9.5012, lng: 76.3421 }
+  },
+  {
+    id: 'RESP-403',
+    name: 'Sgt. Vikram Singh',
+    role: 'Swift Water Diver',
+    unit: 'Coast Guard Air Sea',
+    status: 'Check-in Warning',
+    battery: 28,
+    heartRateBpm: 118,
+    lastCheckInSecAgo: 1650,
+    deadmanTimeoutSec: 1800,
+    hazardRisk: 'Severe Risk',
+    coordinates: { lat: 11.6854, lng: 76.1320 }
+  },
+  {
+    id: 'RESP-404',
+    name: 'Officer Thomas Kurien',
+    role: 'Equipment Operator',
+    unit: 'Fire Dept 12',
+    status: 'Safe / On Task',
+    battery: 74,
+    heartRateBpm: 72,
+    lastCheckInSecAgo: 600,
+    deadmanTimeoutSec: 1800,
+    hazardRisk: 'Moderate',
+    coordinates: { lat: 10.0889, lng: 77.0595 }
+  }
+];
+
