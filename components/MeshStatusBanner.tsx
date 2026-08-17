@@ -2,39 +2,53 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSession } from 'next-auth/react';
+import { apiGet } from '../lib/api/client';
+import type { OpsStats } from '../types/rescue';
 
 export function MeshStatusBanner() {
-  const [isMeshActive, setIsMeshActive] = useState(true);
-  const [syncedPackets, setSyncedPackets] = useState(1482);
+  const { status } = useSession();
+  const qc = useQueryClient();
+  const { data: stats } = useQuery({
+    queryKey: ['stats'],
+    queryFn: () => apiGet<OpsStats>('/api/stats'),
+    enabled: status === 'authenticated',
+  });
   const [isSyncing, setIsSyncing] = useState(false);
 
-  const triggerManualSync = () => {
+  const active = (stats?.activeMeshNodes ?? 0) > 0;
+  const nodes = stats?.meshNodeCount ?? 0;
+  const packets = stats?.packetsRelayed ?? 0;
+  const rssi = stats?.avgRssi ?? -64;
+
+  const triggerManualSync = async () => {
     setIsSyncing(true);
-    setTimeout(() => {
-      setSyncedPackets((prev) => prev + 7);
-      setIsSyncing(false);
-    }, 1200);
+    await qc.invalidateQueries({ queryKey: ['stats'] });
+    await qc.invalidateQueries({ queryKey: ['mesh-nodes'] });
+    await qc.invalidateQueries({ queryKey: ['mesh-packets'] });
+    setTimeout(() => setIsSyncing(false), 800);
   };
 
   return (
     <div className="bg-[#1a1a1a] text-[#f5f0e8] border-b-3 border-[#1a1a1a] px-4 py-2 flex flex-wrap items-center justify-between gap-3 text-xs font-mono font-bold tracking-wider z-50">
       <div className="flex items-center gap-3">
         <span className="flex items-center gap-2 bg-[#ffcc00] text-[#1a1a1a] px-2 py-0.5 border-2 border-[#1a1a1a] font-black uppercase text-[11px]">
-          <span className={`w-2 h-2 rounded-full ${isMeshActive ? 'bg-[#0055ff] animate-ping' : 'bg-[#e63b2e]'}`}></span>
-          {isMeshActive ? 'RESCUEMESH P2P: ACTIVE' : 'RESCUEMESH: OFFLINE MODE'}
+          <span className={`w-2 h-2 rounded-full ${active ? 'bg-[#0055ff] animate-ping' : 'bg-[#e63b2e]'}`}></span>
+          {active ? 'RESCUEMESH P2P: ACTIVE' : 'RESCUEMESH: DEGRADED'}
         </span>
         <span className="hidden sm:inline text-gray-300">
-          NODES: <strong className="text-[#ffcc00]">18 PEERS</strong> | LORA CH: 04 | RSSI: -64dBm
+          NODES: <strong className="text-[#ffcc00]">{stats?.activeMeshNodes ?? 0}/{nodes} PEERS</strong> | LORA CH: 04 | RSSI: {rssi}dBm
         </span>
       </div>
 
       <div className="flex items-center gap-2 ml-auto">
         <span className="hidden md:inline text-gray-400">
-          QUEUE: <span className="text-white font-bold">{syncedPackets} PKTS SYNCED</span>
+          QUEUE: <span className="text-white font-bold">{packets} PKTS SYNCED</span>
         </span>
 
         <button
-          onClick={triggerManualSync}
+          onClick={() => void triggerManualSync()}
           disabled={isSyncing}
           className="neo-button bg-[#ffcc00] text-[#1a1a1a] px-2.5 py-1 text-[11px] hover:bg-white flex items-center gap-1 active:translate-y-0.5"
         >
@@ -51,16 +65,6 @@ export function MeshStatusBanner() {
           <span className="material-symbols-outlined text-sm">hub</span>
           MESH NETWORK
         </Link>
-
-        <button
-          onClick={() => setIsMeshActive(!isMeshActive)}
-          className={`neo-button text-white px-2 py-1 text-[11px] ${
-            isMeshActive ? 'bg-[#e63b2e]' : 'bg-[#2e7d32]'
-          }`}
-          title="Toggle mesh connection simulation"
-        >
-          {isMeshActive ? 'OFFLINE SIM' : 'GO ONLINE'}
-        </button>
       </div>
     </div>
   );

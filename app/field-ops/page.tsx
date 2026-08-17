@@ -1,32 +1,51 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useSession } from 'next-auth/react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Navigation } from '../../components/Navigation';
 import { MeshStatusBanner } from '../../components/MeshStatusBanner';
 import { InteractiveMap } from '../../components/InteractiveMap';
 import { NewIncidentModal } from '../../components/NewIncidentModal';
 import { SosAlertModal } from '../../components/SosAlertModal';
-import { INITIAL_INCIDENTS, INITIAL_RESPONDER_SAFETY } from '../../data/mockData';
-import { ResponderSafety } from '../../types/rescue';
+import { apiGet, apiPatch, apiPost } from '../../lib/api/client';
+import { mapSosCategory } from '../../lib/geo';
+import { CreateIncidentInput, Incident, ResponderSafety } from '../../types/rescue';
 
 export default function FieldOpsPage() {
-  const [responders, setResponders] = useState<ResponderSafety[]>(INITIAL_RESPONDER_SAFETY);
-  const [isNavigating, setIsNavigating] = useState<boolean>(false);
-  const [responderStatus, setResponderStatus] = useState<string>('En Route to Scene');
-  const [elapsedSeconds, setElapsedSeconds] = useState<number>(262); // 4m 22s
-  const [deadmanTimer, setDeadmanTimer] = useState<number>(1800); // 30 minutes countdown
-  const [isNewIncidentOpen, setIsNewIncidentOpen] = useState<boolean>(false);
-  const [isSosModalOpen, setIsSosModalOpen] = useState<boolean>(false);
+  const { data: session } = useSession();
+  const qc = useQueryClient();
+  const [isNavigating, setIsNavigating] = useState(false);
+  const [responderStatus, setResponderStatus] = useState('En Route');
+  const [isNewIncidentOpen, setIsNewIncidentOpen] = useState(false);
+  const [isSosModalOpen, setIsSosModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const { data: responders = [] } = useQuery({
+    queryKey: ['responders'],
+    queryFn: () => apiGet<ResponderSafety[]>('/api/responders'),
+  });
+  const { data: incidents = [] } = useQuery({
+    queryKey: ['incidents'],
+    queryFn: () => apiGet<Incident[]>('/api/incidents'),
+  });
+
+  const myId = session?.user?.responderId ?? responders[0]?.id;
+  const me = responders.find((r) => r.id === myId) ?? responders[0];
+  const assigned = incidents.find((i) => i.id === me?.assignedIncidentId) ?? incidents[0];
+  const deadmanTimer = me?.deadmanRemainingSec ?? 0;
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setElapsedSeconds((prev) => prev + 1);
-      setDeadmanTimer((prev) => (prev > 0 ? prev - 1 : 0));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
+    if (!myId) return;
+    const t = setInterval(() => {
+      apiPost(`/api/responders/${myId}/heartbeat`, {
+        battery: me?.battery,
+        heartRateBpm: me?.heartRateBpm,
+      }).catch(() => undefined);
+    }, 15000);
+    return () => clearInterval(t);
+  }, [myId, me?.battery, me?.heartRateBpm]);
 
   const formatTimer = (seconds: number) => {
     const m = Math.floor(seconds / 60);
@@ -39,15 +58,23 @@ export default function FieldOpsPage() {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  const handleCheckIn = () => {
-    setDeadmanTimer(1800);
-    showToast('RESPONDER SAFETY CHECK-IN VERIFIED! Dead-man timer reset to 30:00');
-  };
+  const checkIn = useMutation({
+    mutationFn: () => apiPost(`/api/responders/${myId}/check-in`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['responders'] });
+      showToast('RESPONDER SAFETY CHECK-IN VERIFIED! Dead-man timer reset to 30:00');
+    },
+  });
 
-  const handleUpdateStatus = (newStatus: string) => {
-    setResponderStatus(newStatus);
-    showToast(`Responder status updated to: "${newStatus}"`);
-  };
+  const updateStatus = useMutation({
+    mutationFn: (st: string) => apiPatch(`/api/responders/${myId}/status`, { status: st }),
+    onSuccess: (_d, st) => {
+      setResponderStatus(st);
+      void qc.invalidateQueries({ queryKey: ['responders'] });
+      void qc.invalidateQueries({ queryKey: ['incidents'] });
+      showToast(`Responder status updated to: "${st}"`);
+    },
+  });
 
   return (
     <div className="bg-[#f5f0e8] text-[#1a1a1a] font-body min-h-screen flex flex-col">
@@ -66,12 +93,13 @@ export default function FieldOpsPage() {
               <span className="material-symbols-outlined text-sm">campaign</span>
               {toastMessage}
             </span>
-            <button onClick={() => setToastMessage(null)} className="font-bold">✕</button>
+            <button onClick={() => setToastMessage(null)} className="font-bold">
+              ✕
+            </button>
           </div>
         )}
 
         <main className="p-4 md:p-8 max-w-7xl mx-auto space-y-6">
-          {/* Header */}
           <div className="border-b-4 border-[#1a1a1a] pb-4 flex flex-col md:flex-row justify-between items-start md:items-end gap-4 font-headline">
             <div>
               <span className="bg-[#0055ff] text-white font-black text-xs px-2.5 py-1 border-2 border-[#1a1a1a] uppercase tracking-wider">
@@ -84,19 +112,15 @@ export default function FieldOpsPage() {
                 Dead-Man Heartbeat Monitor • Environmental Risk Telemetry
               </p>
             </div>
-
-            <div className="flex items-center gap-3">
-              <button
-                onClick={handleCheckIn}
-                className="neo-button bg-[#00cc00] text-white px-5 py-3 text-xs font-black uppercase flex items-center gap-2"
-              >
-                <span className="material-symbols-outlined text-lg">verified_user</span>
-                SAFETY CHECK-IN ({formatTimer(deadmanTimer)})
-              </button>
-            </div>
+            <button
+              onClick={() => checkIn.mutate()}
+              className="neo-button bg-[#00cc00] text-white px-5 py-3 text-xs font-black uppercase flex items-center gap-2"
+            >
+              <span className="material-symbols-outlined text-lg">verified_user</span>
+              SAFETY CHECK-IN ({formatTimer(deadmanTimer)})
+            </button>
           </div>
 
-          {/* Safety Alert Banner if timer low */}
           {deadmanTimer < 300 && (
             <div className="bg-[#e63b2e] text-white p-4 border-4 border-[#1a1a1a] brutal-shadow flex justify-between items-center font-headline animate-bounce">
               <div className="flex items-center gap-3">
@@ -109,7 +133,7 @@ export default function FieldOpsPage() {
                 </div>
               </div>
               <button
-                onClick={handleCheckIn}
+                onClick={() => checkIn.mutate()}
                 className="bg-[#ffcc00] text-[#1a1a1a] font-black text-xs px-4 py-2 border-2 border-[#1a1a1a] uppercase"
               >
                 CONFIRM SAFE NOW
@@ -117,74 +141,66 @@ export default function FieldOpsPage() {
             </div>
           )}
 
-          {/* Incident Context Block */}
           <section className="border-4 border-[#1a1a1a] bg-[#f5f0e8] brutal-shadow p-4 md:p-6 relative font-headline">
             <div className="absolute top-0 right-0 bg-[#e63b2e] text-white px-3 py-1 border-l-4 border-b-4 border-[#1a1a1a] font-black text-xs md:text-sm uppercase">
               Active Task Assignment
             </div>
-
             <div className="mb-2">
               <span className="bg-[#1a1a1a] text-white px-2 py-0.5 text-xs font-bold uppercase inline-block border-2 border-[#1a1a1a]">
-                INC-1024
+                {assigned?.id ?? 'UNASSIGNED'}
               </span>
               <span className="ml-2 bg-[#ffcc00] text-[#1a1a1a] px-2 py-0.5 text-xs font-bold uppercase inline-block border-2 border-[#1a1a1a]">
                 {responderStatus}
               </span>
             </div>
-
             <h2 className="text-3xl md:text-4xl font-black mb-2 uppercase tracking-tighter text-[#1a1a1a]">
-              Flooded Building Structure Rescue &amp; Evac
+              {assigned?.title ?? 'No active assignment'}
             </h2>
-
             <div className="flex flex-col md:flex-row gap-4 mt-4 text-xs md:text-sm font-bold uppercase">
               <div className="flex items-center gap-2 text-[#4a4a4a]">
                 <span className="material-symbols-outlined text-[#1a1a1a]">location_on</span>
-                <span>Sector 4, Alappuzha Waterway Grid</span>
+                <span>{assigned?.location}</span>
               </div>
               <div className="flex items-center gap-2 text-[#e63b2e]">
                 <span className="material-symbols-outlined text-base">timer</span>
-                <span>Mission Time: {formatTimer(elapsedSeconds)} Elapsed</span>
+                <span>Mission Time: {assigned?.elapsedTime}</span>
               </div>
             </div>
           </section>
 
-          {/* Field Map Navigation & Roster Split */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 font-headline">
-            {/* Map Canvas */}
             <div className="lg:col-span-7 border-4 border-[#1a1a1a] bg-[#f5f0e8] brutal-shadow h-96 overflow-hidden">
               <InteractiveMap
-                incidents={INITIAL_INCIDENTS.slice(0, 3)}
-                selectedIncidentId="INC-1024"
+                incidents={incidents.slice(0, 3)}
+                selectedIncidentId={assigned?.id}
                 title="Field Tactical GPS Navigation"
                 heightClass="h-full"
               />
             </div>
 
-            {/* Deployed Responders Safety Roster */}
             <div className="lg:col-span-5 brutal-border bg-[#eee9e0] p-5 brutal-shadow">
               <div className="flex justify-between items-center border-b-3 border-[#1a1a1a] pb-3 mb-4">
                 <h3 className="font-black text-base uppercase flex items-center gap-2">
                   <span className="material-symbols-outlined text-[#0055ff]">shield_person</span>
                   Team Safety Roster
                 </h3>
-                <span className="text-xs font-bold bg-[#1a1a1a] text-white px-2 py-0.5">
-                  {responders.length} Deployed
-                </span>
+                <span className="text-xs font-bold bg-[#1a1a1a] text-white px-2 py-0.5">{responders.length} Deployed</span>
               </div>
-
               <div className="space-y-3">
                 {responders.map((resp) => (
                   <div key={resp.id} className="bg-[#f5f0e8] brutal-border p-3">
                     <div className="flex justify-between items-start">
                       <div>
                         <h4 className="font-bold text-sm uppercase text-[#1a1a1a]">{resp.name}</h4>
-                        <p className="text-xs text-[#4a4a4a] font-mono">{resp.role} • {resp.unit}</p>
+                        <p className="text-xs text-[#4a4a4a] font-mono">
+                          {resp.role} • {resp.unit}
+                        </p>
                       </div>
                       <span
                         className={`text-[10px] font-black uppercase px-2 py-0.5 brutal-border ${
                           resp.status === 'Safe / On Task'
                             ? 'bg-[#00cc00] text-white'
-                            : resp.status === 'Check-in Warning'
+                            : resp.status === 'Check-in Warning' || resp.status === 'SOS Alert'
                             ? 'bg-[#e63b2e] text-white animate-pulse'
                             : 'bg-[#ffcc00] text-[#1a1a1a]'
                         }`}
@@ -192,11 +208,19 @@ export default function FieldOpsPage() {
                         {resp.status}
                       </span>
                     </div>
-
                     <div className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-[#1a1a1a]/20 text-[11px] font-mono font-bold text-[#4a4a4a]">
-                      <div>HR: <span className="text-[#1a1a1a]">{resp.heartRateBpm} BPM</span></div>
-                      <div>BAT: <span className="text-[#1a1a1a]">{resp.battery}%</span></div>
-                      <div>RISK: <span className={resp.hazardRisk === 'Severe Risk' ? 'text-[#e63b2e]' : 'text-[#1a1a1a]'}>{resp.hazardRisk}</span></div>
+                      <div>
+                        HR: <span className="text-[#1a1a1a]">{resp.heartRateBpm} BPM</span>
+                      </div>
+                      <div>
+                        BAT: <span className="text-[#1a1a1a]">{resp.battery}%</span>
+                      </div>
+                      <div>
+                        RISK:{' '}
+                        <span className={resp.hazardRisk === 'Severe Risk' ? 'text-[#e63b2e]' : 'text-[#1a1a1a]'}>
+                          {resp.hazardRisk}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -204,18 +228,14 @@ export default function FieldOpsPage() {
             </div>
           </div>
 
-          {/* Action Grid */}
           <section className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 font-headline">
-            {/* Primary Navigation Action */}
             <button
               onClick={() => {
                 setIsNavigating(!isNavigating);
                 showToast(isNavigating ? 'GPS Navigation Paused.' : 'GPS Turn-by-Turn Navigation Started!');
               }}
               className={`border-4 border-[#1a1a1a] brutal-shadow-lg p-6 md:p-8 flex flex-col items-center justify-center gap-3 transition-all group cursor-pointer ${
-                isNavigating
-                  ? 'bg-[#00cc00] text-white hover:bg-[#1a1a1a]'
-                  : 'bg-[#0055ff] text-white hover:bg-[#1a1a1a]'
+                isNavigating ? 'bg-[#00cc00] text-white hover:bg-[#1a1a1a]' : 'bg-[#0055ff] text-white hover:bg-[#1a1a1a]'
               }`}
             >
               <span className="material-symbols-outlined text-5xl md:text-6xl group-hover:scale-110 transition-transform">
@@ -225,15 +245,12 @@ export default function FieldOpsPage() {
                 {isNavigating ? 'NAVIGATION ACTIVE (PAUSE)' : 'START GPS NAVIGATION'}
               </span>
             </button>
-
-            {/* Secondary Actions */}
             <div className="flex flex-col gap-4 md:gap-6">
-              {/* Status Selector */}
               <div className="flex gap-2">
                 {['En Route', 'On Scene', 'Cleared'].map((st) => (
                   <button
                     key={st}
-                    onClick={() => handleUpdateStatus(st)}
+                    onClick={() => updateStatus.mutate(st)}
                     className={`flex-1 border-4 border-[#1a1a1a] p-3 font-black text-xs uppercase brutal-shadow cursor-pointer transition-all ${
                       responderStatus === st ? 'bg-[#ffcc00] text-[#1a1a1a]' : 'bg-[#eee9e0] hover:bg-[#ffcc00]'
                     }`}
@@ -242,8 +259,6 @@ export default function FieldOpsPage() {
                   </button>
                 ))}
               </div>
-
-              {/* Responder Mayday SOS */}
               <button
                 onClick={() => setIsSosModalOpen(true)}
                 className="bg-[#f5f0e8] text-[#e63b2e] border-4 border-[#e63b2e] brutal-shadow p-4 md:p-6 flex items-center justify-center gap-3 hover:bg-[#e63b2e] hover:text-white transition-all cursor-pointer"
@@ -258,16 +273,24 @@ export default function FieldOpsPage() {
         </main>
       </div>
 
-      {/* Modals */}
       <NewIncidentModal
         isOpen={isNewIncidentOpen}
         onClose={() => setIsNewIncidentOpen(false)}
-        onAddIncident={(inc) => showToast(`New Incident Broadcast: ${inc.id}`)}
+        onAddIncident={async (inc: CreateIncidentInput) => {
+          const created = await apiPost<Incident>('/api/incidents', inc);
+          showToast(`New Incident Broadcast: ${created.id}`);
+        }}
       />
       <SosAlertModal
         isOpen={isSosModalOpen}
         onClose={() => setIsSosModalOpen(false)}
-        onConfirmSos={(cat) => showToast(`RESPONDER MAYDAY DISPATCHED: ${cat}`)}
+        onConfirmSos={(cat) => {
+          if (!myId) return;
+          apiPost(`/api/responders/${myId}/mayday`, { type: mapSosCategory(cat) }).then(() => {
+            void qc.invalidateQueries({ queryKey: ['responders'] });
+            showToast(`RESPONDER MAYDAY DISPATCHED: ${cat}`);
+          });
+        }}
       />
     </div>
   );

@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Incident, PriorityLevel } from '../types/rescue';
+import { PriorityLevel, CreateIncidentInput } from '../types/rescue';
 
 interface NewIncidentModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAddIncident: (inc: Incident) => void;
+  onAddIncident: (inc: CreateIncidentInput) => void | Promise<void>;
 }
 
 export const NewIncidentModal: React.FC<NewIncidentModalProps> = ({
@@ -25,29 +25,23 @@ export const NewIncidentModal: React.FC<NewIncidentModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
 
-    const newInc: Incident = {
-      id: `INC-${Math.floor(1000 + Math.random() * 9000)}`,
+    await onAddIncident({
       title,
       location,
       sector,
       priority,
-      urgencyLabel: priority === 'Crit-01' ? 'Priority 0' : 'Priority 1',
-      timeAgo: 'Just Now',
-      elapsedTime: '00:01 Elapsed',
       description,
-      status: 'Pending',
       casualtiesEst: Number(casualties),
       waterLevelRising: waterRising,
       structuralRisk,
-      coordinates: { lat: 9.5 + Math.random() * 0.1, lng: 76.3 + Math.random() * 0.1 }
-    };
-
-    onAddIncident(newInc);
+    });
     onClose();
+    setTitle('');
+    setDescription('');
   };
 
   return (

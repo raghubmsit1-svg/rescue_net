@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  serverExternalPackages: ['postgres', 'ioredis', 'bullmq', 'bcryptjs'],
 };
 
 export default nextConfig;

@@ -6,6 +6,9 @@ import { Navigation } from '../../components/Navigation';
 import { MeshStatusBanner } from '../../components/MeshStatusBanner';
 import { NewIncidentModal } from '../../components/NewIncidentModal';
 import { SosAlertModal } from '../../components/SosAlertModal';
+import { apiPost } from '../../lib/api/client';
+import { ALAPPUZHA, mapSosCategory } from '../../lib/geo';
+import { CreateIncidentInput, Incident } from '../../types/rescue';
 
 export default function VictimSosPage() {
   const [gpsLocked, setGpsLocked] = useState<boolean>(true);
@@ -16,7 +19,29 @@ export default function VictimSosPage() {
   const [isSosModalOpen, setIsSosModalOpen] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  const holdIntervalRef = useRef<any>(null);
+  const holdIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [coords, setCoords] = useState(ALAPPUZHA);
+
+  const resolveCoords = async () => {
+    if (!navigator.geolocation) return ALAPPUZHA;
+    return new Promise<{ lat: number; lng: number }>((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => resolve(coords),
+        { timeout: 2500 }
+      );
+    });
+  };
+
+  const sendSos = async (label: string) => {
+    const loc = await resolveCoords();
+    setCoords(loc);
+    await apiPost('/api/sos', {
+      type: mapSosCategory(label),
+      location: { ...loc, address: 'Alappuzha Central Waterway Block 3' },
+      accuracyMeters: gpsLocked ? 3 : 25,
+    });
+  };
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -33,15 +58,17 @@ export default function VictimSosPage() {
       setHoldingProgress(progress);
 
       if (progress >= 100) {
-        clearInterval(holdIntervalRef.current);
+        if (holdIntervalRef.current) clearInterval(holdIntervalRef.current);
         setSosSent(true);
-        confetti({
-          particleCount: 100,
-          spread: 80,
-          origin: { y: 0.6 },
-          colors: ['#e63b2e', '#ffcc00', '#0055ff']
+        void sendSos('General SOS').then(() => {
+          confetti({
+            particleCount: 100,
+            spread: 80,
+            origin: { y: 0.6 },
+            colors: ['#e63b2e', '#ffcc00', '#0055ff']
+          });
+          showToast('EMERGENCY SIGNAL SENT! Rescue Net HQ and nearest units alerted.');
         });
-        showToast('EMERGENCY SIGNAL SENT! Rescue Net HQ and nearest units alerted.');
       }
     }, 100);
   };
@@ -56,11 +83,13 @@ export default function VictimSosPage() {
   };
 
   const handleQuickReport = (type: string) => {
-    showToast(`Distress Request Logged: "${type}". Location coords transmitted.`);
-    confetti({
-      particleCount: 40,
-      spread: 50,
-      colors: ['#ffcc00', '#0055ff']
+    void sendSos(type).then(() => {
+      showToast(`Distress Request Logged: "${type}". Location coords transmitted.`);
+      confetti({
+        particleCount: 40,
+        spread: 50,
+        colors: ['#ffcc00', '#0055ff']
+      });
     });
   };
 
@@ -228,7 +257,7 @@ export default function VictimSosPage() {
             <div className="bg-[#eee9e0] brutal-border p-4 brutal-shadow flex-grow flex flex-col justify-between">
               <div>
                 <h4 className="font-black text-sm uppercase mb-1">GPS Telemetry Output</h4>
-                <p className="font-mono text-xs text-[#4a4a4a]">LAT: 9.4981° N | LNG: 76.3388° E</p>
+                <p className="font-mono text-xs text-[#4a4a4a]">LAT: {coords.lat.toFixed(4)}° N | LNG: {coords.lng.toFixed(4)}° E</p>
                 <p className="font-body text-xs text-[#4a4a4a] mt-1">Grid Sector: Alappuzha Central Waterway Block 3</p>
               </div>
               <button
@@ -246,12 +275,17 @@ export default function VictimSosPage() {
       <NewIncidentModal
         isOpen={isNewIncidentOpen}
         onClose={() => setIsNewIncidentOpen(false)}
-        onAddIncident={(inc) => showToast(`Incident Registered: ${inc.id}`)}
+        onAddIncident={async (inc: CreateIncidentInput) => {
+          const created = await apiPost<Incident>('/api/incidents', inc);
+          showToast(`Incident Registered: ${created.id}`);
+        }}
       />
       <SosAlertModal
         isOpen={isSosModalOpen}
         onClose={() => setIsSosModalOpen(false)}
-        onConfirmSos={(cat) => showToast(`GLOBAL SOS BROADCAST: ${cat}`)}
+        onConfirmSos={(cat) => {
+          void sendSos(cat).then(() => showToast(`GLOBAL SOS BROADCAST: ${cat}`));
+        }}
       />
     </div>
   );

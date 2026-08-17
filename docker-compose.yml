@@ -1,0 +1,68 @@
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: rescuenet
+      POSTGRES_PASSWORD: rescuenet
+      POSTGRES_DB: rescuenet
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rescuenet -d rescuenet"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  web:
+    build: .
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://rescuenet:rescuenet@postgres:5432/rescuenet
+      REDIS_URL: redis://redis:6379
+      AUTH_URL: http://localhost:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/app
+      - web_node_modules:/app/node_modules
+    command: sh -c "npx tsx drizzle/migrate.ts && npx tsx drizzle/seed.ts && npm run dev"
+
+  worker:
+    build: .
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://rescuenet:rescuenet@postgres:5432/rescuenet
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/app
+      - worker_node_modules:/app/node_modules
+    command: sh -c "npx tsx drizzle/migrate.ts && npm run worker"
+
+volumes:
+  pgdata:
+  web_node_modules:
+  worker_node_modules:

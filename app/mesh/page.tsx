@@ -1,59 +1,47 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Navigation } from '../../components/Navigation';
 import { MeshStatusBanner } from '../../components/MeshStatusBanner';
-import { INITIAL_MESH_NODES } from '../../data/mockData';
-import { MeshNode } from '../../types/rescue';
+import { apiGet, apiPost } from '../../lib/api/client';
+import { MeshNode, MeshPacket } from '../../types/rescue';
 
 export default function MeshNetworkPage() {
-  const [nodes, setNodes] = useState<MeshNode[]>(INITIAL_MESH_NODES);
-  const [selectedNode, setSelectedNode] = useState<MeshNode>(nodes[0]);
-  const [isMeshSimActive, setIsMeshSimActive] = useState<boolean>(true);
-  const [syncedCount, setSyncedCount] = useState<number>(1420);
-  const [broadcastMessage, setBroadcastMessage] = useState<string>('');
-  const [recentPackets, setRecentPackets] = useState<
-    { id: string; sender: string; payload: string; hops: number; time: string }[]
-  >([
-    {
-      id: 'PKT-9901',
-      sender: 'Victim Mobile #8812',
-      payload: 'SOS Medical: Chest Pain & High Water in Alappuzha Sector 4',
-      hops: 2,
-      time: '1m ago',
-    },
-    {
-      id: 'PKT-9898',
-      sender: 'Responder NDRF Unit 4',
-      payload: 'Relay Beacon Ping: Water levels stabilized near Bridge 2',
-      hops: 1,
-      time: '3m ago',
-    },
-    {
-      id: 'PKT-9892',
-      sender: 'Wayanad Ridge Node',
-      payload: 'Landslide Warning: Heavy rainfall triggers mud movement',
-      hops: 3,
-      time: '8m ago',
-    },
-  ]);
+  const qc = useQueryClient();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [broadcastMessage, setBroadcastMessage] = useState('');
 
-  const handleSendBroadcast = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!broadcastMessage.trim()) return;
-    const newPacket = {
-      id: `PKT-${Math.floor(1000 + Math.random() * 9000)}`,
-      sender: 'HQ Command Mesh Transmitter',
-      payload: broadcastMessage,
-      hops: 1,
-      time: 'Just now',
-    };
-    setRecentPackets([newPacket, ...recentPackets]);
-    setSyncedCount((prev) => prev + 1);
-    setBroadcastMessage('');
-  };
+  const { data: nodes = [] } = useQuery({
+    queryKey: ['mesh-nodes'],
+    queryFn: () => apiGet<MeshNode[]>('/api/mesh/nodes'),
+  });
+  const { data: recentPackets = [] } = useQuery({
+    queryKey: ['mesh-packets'],
+    queryFn: () => apiGet<MeshPacket[]>('/api/mesh/packets'),
+  });
 
+  const selectedNode = nodes.find((n) => n.id === selectedId) ?? nodes[0];
   const activeNodesCount = nodes.filter((n) => n.status === 'Active').length;
+  const syncedCount = nodes.reduce((sum, n) => sum + n.packetsRelayed, 0);
+  const avgRssi = nodes.length ? Math.round(nodes.reduce((s, n) => s + n.rssi, 0) / nodes.length) : 0;
+
+  const broadcast = useMutation({
+    mutationFn: (payload: string) => apiPost<MeshPacket>('/api/mesh/broadcast', { payload }),
+    onSuccess: () => {
+      setBroadcastMessage('');
+      void qc.invalidateQueries({ queryKey: ['mesh-packets'] });
+      void qc.invalidateQueries({ queryKey: ['mesh-nodes'] });
+      void qc.invalidateQueries({ queryKey: ['stats'] });
+    },
+  });
+
+  const pingNode = useMutation({
+    mutationFn: (id: string) => apiPost(`/api/mesh/nodes/${id}/ping`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['mesh-nodes'] });
+    },
+  });
 
   return (
     <div className="bg-[#f5f0e8] text-[#1a1a1a] font-body min-h-screen flex flex-col">
@@ -61,7 +49,6 @@ export default function MeshNetworkPage() {
       <Navigation />
 
       <div className="flex-grow flex flex-col lg:ml-64 w-full p-4 md:p-8 pb-20 md:pb-8">
-        {/* Header */}
         <div className="mb-6 border-b-4 border-[#1a1a1a] pb-4 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
           <div>
             <span className="bg-[#ffcc00] text-[#1a1a1a] font-headline font-black text-xs px-2.5 py-1 border-2 border-[#1a1a1a] uppercase tracking-wider">
@@ -74,52 +61,34 @@ export default function MeshNetworkPage() {
               Zero-Infrastructure Emergency LoRa &amp; BLE Relay Protocol
             </p>
           </div>
-
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setIsMeshSimActive(!isMeshSimActive)}
-              className={`neo-button px-4 py-2 text-xs font-black uppercase flex items-center gap-2 ${
-                isMeshSimActive ? 'bg-[#00cc00] text-white' : 'bg-[#e63b2e] text-white'
-              }`}
-            >
-              <span className="material-symbols-outlined">
-                {isMeshSimActive ? 'wifi_tethering' : 'portable_wifi_off'}
-              </span>
-              {isMeshSimActive ? 'MESH NETWORK ONLINE' : 'MESH PAUSED'}
-            </button>
-          </div>
         </div>
 
-        {/* Top Overview Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <div className="brutal-border bg-[#1a1a1a] text-white p-5 brutal-shadow">
             <p className="text-xs font-headline font-bold uppercase text-[#ffcc00]">Active Peer Nodes</p>
-            <p className="text-4xl font-headline font-black mt-2 text-white">{activeNodesCount} / {nodes.length}</p>
+            <p className="text-4xl font-headline font-black mt-2 text-white">
+              {activeNodesCount} / {nodes.length}
+            </p>
             <p className="text-[11px] text-gray-300 font-mono mt-1">LoRa + BLE + Satellite</p>
           </div>
-
           <div className="brutal-border bg-[#eee9e0] p-5 brutal-shadow">
             <p className="text-xs font-headline font-bold uppercase text-[#4a4a4a]">Packets Relayed</p>
             <p className="text-4xl font-headline font-black mt-2 text-[#1a1a1a]">{syncedCount}</p>
-            <p className="text-[11px] text-[#0055ff] font-mono font-bold mt-1">100% Delivery Rate</p>
+            <p className="text-[11px] text-[#0055ff] font-mono font-bold mt-1">Live mesh counters</p>
           </div>
-
           <div className="brutal-border bg-[#ffcc00] p-5 brutal-shadow">
             <p className="text-xs font-headline font-bold uppercase text-[#1a1a1a]">Avg Signal Strength</p>
-            <p className="text-4xl font-headline font-black mt-2 text-[#1a1a1a]">-68 dBm</p>
-            <p className="text-[11px] text-[#1a1a1a] font-mono font-bold mt-1">HIGH QUALITY LINK</p>
+            <p className="text-4xl font-headline font-black mt-2 text-[#1a1a1a]">{avgRssi} dBm</p>
+            <p className="text-[11px] text-[#1a1a1a] font-mono font-bold mt-1">NETWORK RSSI</p>
           </div>
-
           <div className="brutal-border bg-[#0055ff] text-white p-5 brutal-shadow">
-            <p className="text-xs font-headline font-bold uppercase text-[#ffcc00]">Local Storage Cache</p>
-            <p className="text-4xl font-headline font-black mt-2">128 MB</p>
-            <p className="text-[11px] text-white font-mono mt-1">Encrypted Offline DB</p>
+            <p className="text-xs font-headline font-bold uppercase text-[#ffcc00]">Registered Nodes</p>
+            <p className="text-4xl font-headline font-black mt-2">{nodes.length}</p>
+            <p className="text-[11px] text-white font-mono mt-1">Postgres mesh registry</p>
           </div>
         </div>
 
-        {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Node Topology List */}
           <div className="lg:col-span-6 brutal-border bg-[#eee9e0] p-5 brutal-shadow">
             <div className="flex justify-between items-center border-b-3 border-[#1a1a1a] pb-3 mb-4">
               <h3 className="font-headline font-black text-lg uppercase flex items-center gap-2">
@@ -130,14 +99,13 @@ export default function MeshNetworkPage() {
                 {nodes.length} Registered
               </span>
             </div>
-
             <div className="space-y-3">
               {nodes.map((node) => (
                 <div
                   key={node.id}
-                  onClick={() => setSelectedNode(node)}
+                  onClick={() => setSelectedId(node.id)}
                   className={`brutal-border p-4 cursor-pointer transition-all ${
-                    selectedNode.id === node.id
+                    selectedNode?.id === node.id
                       ? 'bg-[#ffcc00] text-[#1a1a1a] brutal-shadow translate-x-1'
                       : 'bg-[#f5f0e8] hover:bg-white'
                   }`}
@@ -150,7 +118,6 @@ export default function MeshNetworkPage() {
                       <h4 className="font-headline font-black text-base uppercase mt-1">{node.name}</h4>
                       <p className="text-xs text-[#4a4a4a] font-mono">ID: {node.id}</p>
                     </div>
-
                     <div className="text-right">
                       <span
                         className={`text-[10px] font-headline font-black uppercase px-2 py-0.5 brutal-border ${
@@ -163,87 +130,91 @@ export default function MeshNetworkPage() {
                       >
                         {node.status}
                       </span>
-                      <p className="text-xs font-mono font-bold mt-1 text-[#4a4a4a]">
-                        Bat: {node.batteryLevel}%
-                      </p>
+                      <p className="text-xs font-mono font-bold mt-1 text-[#4a4a4a]">Bat: {node.batteryLevel}%</p>
                     </div>
                   </div>
-
                   <div className="grid grid-cols-3 gap-2 mt-3 pt-2 border-t border-[#1a1a1a]/20 text-[11px] font-mono font-bold text-[#4a4a4a]">
-                    <div>RSSI: <span className="text-[#1a1a1a]">{node.rssi} dBm</span></div>
-                    <div>Peers: <span className="text-[#1a1a1a]">{node.connectedPeers}</span></div>
-                    <div>Pkts: <span className="text-[#1a1a1a]">{node.packetsRelayed}</span></div>
+                    <div>
+                      RSSI: <span className="text-[#1a1a1a]">{node.rssi} dBm</span>
+                    </div>
+                    <div>
+                      Peers: <span className="text-[#1a1a1a]">{node.connectedPeers}</span>
+                    </div>
+                    <div>
+                      Pkts: <span className="text-[#1a1a1a]">{node.packetsRelayed}</span>
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Node Inspector & Broadcast Panel */}
           <div className="lg:col-span-6 flex flex-col gap-6">
-            {/* Selected Node Inspector */}
-            <div className="brutal-border bg-[#1a1a1a] text-white p-5 brutal-shadow">
-              <div className="flex justify-between items-start border-b-2 border-white/20 pb-3 mb-4">
-                <div>
-                  <span className="text-xs font-headline font-bold text-[#ffcc00] uppercase">Selected Node Details</span>
-                  <h3 className="text-xl font-headline font-black uppercase text-white mt-0.5">
-                    {selectedNode.name}
-                  </h3>
+            {selectedNode && (
+              <div className="brutal-border bg-[#1a1a1a] text-white p-5 brutal-shadow">
+                <div className="flex justify-between items-start border-b-2 border-white/20 pb-3 mb-4">
+                  <div>
+                    <span className="text-xs font-headline font-bold text-[#ffcc00] uppercase">Selected Node Details</span>
+                    <h3 className="text-xl font-headline font-black uppercase text-white mt-0.5">{selectedNode.name}</h3>
+                  </div>
+                  <span className="material-symbols-outlined text-[#ffcc00] text-3xl">sensors</span>
                 </div>
-                <span className="material-symbols-outlined text-[#ffcc00] text-3xl">sensors</span>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-xs font-mono mb-4">
+                  <div className="bg-white/10 p-3 brutal-border border-white/30">
+                    <p className="text-gray-400">HARDWARE TYPE</p>
+                    <p className="font-bold text-white text-sm mt-1">{selectedNode.type}</p>
+                  </div>
+                  <div className="bg-white/10 p-3 brutal-border border-white/30">
+                    <p className="text-gray-400">BATTERY POWER</p>
+                    <p className="font-bold text-[#ffcc00] text-sm mt-1">{selectedNode.batteryLevel}%</p>
+                  </div>
+                  <div className="bg-white/10 p-3 brutal-border border-white/30">
+                    <p className="text-gray-400">LAST HEARTBEAT</p>
+                    <p className="font-bold text-white text-sm mt-1">{selectedNode.lastPing}</p>
+                  </div>
+                  <div className="bg-white/10 p-3 brutal-border border-white/30">
+                    <p className="text-gray-400">GPS LATITUDE</p>
+                    <p className="font-bold text-white text-sm mt-1">{selectedNode.coordinates.lat}</p>
+                  </div>
+                  <div className="bg-white/10 p-3 brutal-border border-white/30">
+                    <p className="text-gray-400">GPS LONGITUDE</p>
+                    <p className="font-bold text-white text-sm mt-1">{selectedNode.coordinates.lng}</p>
+                  </div>
+                  <div className="bg-white/10 p-3 brutal-border border-white/30">
+                    <p className="text-gray-400">CONNECTED HOPS</p>
+                    <p className="font-bold text-[#0055ff] text-sm mt-1">{selectedNode.connectedPeers} Nodes</p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => pingNode.mutate(selectedNode.id)}
+                    className="neo-button bg-[#ffcc00] text-[#1a1a1a] px-3 py-2 text-xs font-black uppercase flex-1"
+                  >
+                    Ping Node
+                  </button>
+                  <button
+                    onClick={() => pingNode.mutate(selectedNode.id)}
+                    className="neo-button bg-[#0055ff] text-white px-3 py-2 text-xs font-black uppercase flex-1"
+                  >
+                    Run Diagnostics
+                  </button>
+                </div>
               </div>
+            )}
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-xs font-mono mb-4">
-                <div className="bg-white/10 p-3 brutal-border border-white/30">
-                  <p className="text-gray-400">HARDWARE TYPE</p>
-                  <p className="font-bold text-white text-sm mt-1">{selectedNode.type}</p>
-                </div>
-                <div className="bg-white/10 p-3 brutal-border border-white/30">
-                  <p className="text-gray-400">BATTERY POWER</p>
-                  <p className="font-bold text-[#ffcc00] text-sm mt-1">{selectedNode.batteryLevel}%</p>
-                </div>
-                <div className="bg-white/10 p-3 brutal-border border-white/30">
-                  <p className="text-gray-400">LAST HEARTBEAT</p>
-                  <p className="font-bold text-white text-sm mt-1">{selectedNode.lastPing}</p>
-                </div>
-                <div className="bg-white/10 p-3 brutal-border border-white/30">
-                  <p className="text-gray-400">GPS LATITUDE</p>
-                  <p className="font-bold text-white text-sm mt-1">{selectedNode.coordinates.lat}</p>
-                </div>
-                <div className="bg-white/10 p-3 brutal-border border-white/30">
-                  <p className="text-gray-400">GPS LONGITUDE</p>
-                  <p className="font-bold text-white text-sm mt-1">{selectedNode.coordinates.lng}</p>
-                </div>
-                <div className="bg-white/10 p-3 brutal-border border-white/30">
-                  <p className="text-gray-400">CONNECTED HOPS</p>
-                  <p className="font-bold text-[#0055ff] text-sm mt-1">{selectedNode.connectedPeers} Nodes</p>
-                </div>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  onClick={() => alert(`Ping sent to node ${selectedNode.id}`)}
-                  className="neo-button bg-[#ffcc00] text-[#1a1a1a] px-3 py-2 text-xs font-black uppercase flex-1"
-                >
-                  Ping Node
-                </button>
-                <button
-                  onClick={() => alert(`Diagnosing telemetry on ${selectedNode.name}`)}
-                  className="neo-button bg-[#0055ff] text-white px-3 py-2 text-xs font-black uppercase flex-1"
-                >
-                  Run Diagnostics
-                </button>
-              </div>
-            </div>
-
-            {/* Offline Mesh Broadcast & Relayed Logs */}
             <div className="brutal-border bg-[#eee9e0] p-5 brutal-shadow flex-grow">
               <h3 className="font-headline font-black text-lg uppercase border-b-3 border-[#1a1a1a] pb-3 mb-4 flex items-center gap-2">
                 <span className="material-symbols-outlined text-[#e63b2e]">podcasts</span>
                 Broadcast P2P Emergency Packet
               </h3>
-
-              <form onSubmit={handleSendBroadcast} className="mb-5 space-y-3">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!broadcastMessage.trim()) return;
+                  broadcast.mutate(broadcastMessage);
+                }}
+                className="mb-5 space-y-3"
+              >
                 <textarea
                   value={broadcastMessage}
                   onChange={(e) => setBroadcastMessage(e.target.value)}
@@ -258,7 +229,6 @@ export default function MeshNetworkPage() {
                   BROADCAST TO ALL MESH NODES
                 </button>
               </form>
-
               <h4 className="font-headline font-black text-xs uppercase text-[#4a4a4a] mb-2 tracking-wider">
                 Recent Relayed Packets (Live Stream)
               </h4>

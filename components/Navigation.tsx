@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
+import { signOut, useSession } from 'next-auth/react';
 
 interface NavigationProps {
   onOpenNewIncident?: () => void;
@@ -18,7 +19,8 @@ export const Navigation: React.FC<NavigationProps> = ({
   setSearchQuery
 }) => {
   const pathname = usePathname();
-  const router = useRouter();
+  const { data: session } = useSession();
+  const role = session?.user?.role;
   const [timeString, setTimeString] = useState<string>('');
   const [unreadNotifications, setUnreadNotifications] = useState<number>(3);
   const [showNotificationsMenu, setShowNotificationsMenu] = useState<boolean>(false);
@@ -48,7 +50,12 @@ export const Navigation: React.FC<NavigationProps> = ({
     { label: 'Mesh Network', href: '/mesh', icon: 'hub' },
     { label: 'Worker Safety', href: '/field-ops', icon: 'security' },
     { label: 'AI Triage', href: '/triage', icon: 'biotech' },
-  ];
+  ].filter((link) => {
+    if (!role || role === 'hq') return true;
+    if (role === 'civilian') return link.href === '/sos';
+    if (role === 'responder') return link.href === '/sos' || link.href === '/field-ops';
+    return true;
+  });
 
   return (
     <>
@@ -61,7 +68,7 @@ export const Navigation: React.FC<NavigationProps> = ({
           </div>
           <div>
             <h2 className="text-lg font-headline font-black uppercase text-[#1a1a1a] leading-none">
-              HQ Alpha
+              {session?.user?.name ?? 'HQ Alpha'}
             </h2>
             <p className="text-xs font-headline font-bold text-[#4a4a4a] uppercase tracking-wider mt-1 flex items-center gap-1.5">
               <span className="w-2 h-2 bg-[#00cc00] rounded-full inline-block animate-pulse"></span>
@@ -71,6 +78,7 @@ export const Navigation: React.FC<NavigationProps> = ({
         </div>
 
         {/* CTA Button */}
+        {role !== 'civilian' && role !== 'responder' && (
         <div className="p-4 border-b-4 border-[#1a1a1a]">
           <button
             onClick={onOpenNewIncident}
@@ -82,6 +90,7 @@ export const Navigation: React.FC<NavigationProps> = ({
             NEW INCIDENT
           </button>
         </div>
+        )}
 
         {/* Navigation Links */}
         <ul className="flex-grow flex flex-col py-3 font-headline font-bold uppercase text-sm">
@@ -117,17 +126,14 @@ export const Navigation: React.FC<NavigationProps> = ({
             <span className="text-[#1a1a1a] font-black text-sm">{timeString || '14:42:09 IST'}</span>
           </div>
           <div className="flex gap-2">
+            <span className="flex-1 brutal-border p-2 bg-[#ffcc00] text-center text-[10px] font-black">
+              {role ?? 'guest'}
+            </span>
             <button
-              onClick={() => alert('RescueNet v2.4 (Kerala Floods 2026 Emergency Deployment). Contact Central Dispatch for sysops assistance.')}
-              className="flex-1 brutal-border p-2 bg-[#f5f0e8] hover:bg-[#ffcc00] flex items-center justify-center gap-1 cursor-pointer"
+              onClick={() => signOut({ callbackUrl: '/login' })}
+              className="flex-1 brutal-border p-2 bg-[#f5f0e8] hover:bg-[#e63b2e] hover:text-white flex items-center justify-center gap-1 cursor-pointer"
             >
-              <span className="material-symbols-outlined text-sm">help</span> Support
-            </button>
-            <button
-              onClick={() => alert('Archive mode: 1,420 resolved incident logs synced to cloud storage.')}
-              className="flex-1 brutal-border p-2 bg-[#f5f0e8] hover:bg-[#ffcc00] flex items-center justify-center gap-1 cursor-pointer"
-            >
-              <span className="material-symbols-outlined text-sm">history</span> Archive
+              <span className="material-symbols-outlined text-sm">logout</span> Sign out
             </button>
           </div>
         </div>

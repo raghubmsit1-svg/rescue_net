@@ -1,4 +1,5 @@
 export type PriorityLevel = 'Crit-01' | 'High-04' | 'Med-12' | 'Low-20';
+export type UserRole = 'hq' | 'responder' | 'civilian';
 
 export interface Incident {
   id: string;
@@ -16,6 +17,8 @@ export interface Incident {
   waterLevelRising: boolean;
   structuralRisk: 'Low' | 'Medium' | 'High' | 'Extreme';
   coordinates: { lat: number; lng: number };
+  priorityScore?: number;
+  createdAt?: string;
 }
 
 export interface AgencyMatch {
@@ -44,6 +47,7 @@ export interface EmergencySOSPayload {
   location: { lat: number; lng: number; address: string };
   accuracyMeters: number;
   status: 'Received' | 'Unit En Route' | 'Resolved';
+  incidentId?: string;
 }
 
 export interface MeshNode {
@@ -59,6 +63,14 @@ export interface MeshNode {
   coordinates: { lat: number; lng: number };
 }
 
+export interface MeshPacket {
+  id: string;
+  sender: string;
+  payload: string;
+  hops: number;
+  time: string;
+}
+
 export interface ResponderSafety {
   id: string;
   name: string;
@@ -69,7 +81,31 @@ export interface ResponderSafety {
   heartRateBpm: number;
   lastCheckInSecAgo: number;
   deadmanTimeoutSec: number;
+  deadmanRemainingSec?: number;
   hazardRisk: 'Nominal' | 'Moderate' | 'Severe Risk';
   coordinates: { lat: number; lng: number };
+  assignedIncidentId?: string;
 }
 
+export interface OpsStats {
+  totalRescues: number;
+  deployedUnits: number;
+  criticalCount: number;
+  openIncidents: number;
+  activeMeshNodes: number;
+  meshNodeCount: number;
+  packetsRelayed: number;
+  avgRssi: number;
+}
+
+export interface CreateIncidentInput {
+  title: string;
+  location: string;
+  sector: string;
+  priority?: PriorityLevel;
+  description?: string;
+  casualtiesEst?: number;
+  waterLevelRising?: boolean;
+  structuralRisk?: 'Low' | 'Medium' | 'High' | 'Extreme';
+  coordinates?: { lat: number; lng: number };
+}

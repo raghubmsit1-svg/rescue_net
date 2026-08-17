@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { Providers } from '../components/Providers';
 
 export const metadata: Metadata = {
   title: "RescueNet - Unified Response System | Kerala Floods '26",
@@ -26,7 +27,7 @@ export default function RootLayout({
         />
       </head>
       <body className="bg-[#f5f0e8] text-[#1a1a1a] font-body antialiased min-h-screen flex flex-col">
-        {children}
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
